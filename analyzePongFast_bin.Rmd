@@ -1,0 +1,619 @@
+---
+title: "analyzePongFast_bin"
+output: html_document
+date: "2023-03-03"
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(rjson)
+library(plyr)
+library(ggplot2)
+library(RColorBrewer)
+library(cowplot)
+```
+Load data
+```{r}
+df.all = fromJSON(file = "all_subjects_fast.json")
+df.all = df.all[c(1:86, 88:97, 99:100)] #skip 87 & 98 cuz of bug
+numtrials = 100
+numcalib = 20
+numbasic = 80
+numsubs = 194
+sub = vector(length = numsubs*numtrials)
+trial = vector(length = numsubs*numtrials)
+ball_theta = vector(length = numsubs*numtrials)
+paddle_size = vector(length = numsubs*numtrials)
+er = vector(length = numsubs*numtrials)
+error = vector(length = numsubs*numtrials)
+success = vector(length = numsubs*numtrials)
+hit_rate = vector(length = numsubs*numtrials)
+rmse = vector(length = numsubs*numtrials)
+score = vector(length = numsubs*numtrials)
+bounces = vector(length = numsubs*numtrials)
+c=1
+for(s in 1:length(df.all)){
+  vx = 0.6
+  del_t = (df.all[[s]]$config$width-35)/vx
+  height = df.all[[s]]$config$height
+  for(tt in 1:numcalib){
+    sub[c] = s
+    trial[c] = tt
+    ball_theta[c] = df.all[[s]]$data$calib[[tt]]$ball_theta
+    paddle_size[c] = df.all[[s]]$data$calib[[tt]]$displ_rad #half of paddle height
+    er[c] = df.all[[s]]$data$calib[[tt]]$er
+    if(length(df.all[[s]]$data$calib[[tt]]$bounces)==0){
+      bounces[c] = 1
+      print(c) #smth is wrong
+    } else {
+      bounces[c] = df.all[[s]]$data$calib[[tt]]$bounces
+    }
+    #annoying but we must compute the error on each trial
+    yf = (vx*tan(ball_theta[c] * pi/180))*del_t + df.all[[s]]$data$calib[[tt]]$ball_y
+    if(bounces[c] == 1){
+      if(yf>0.4*height)
+        yf = 0.8*height - yf #after a bounce
+      else if(yf< -0.4*height)
+        yf = -0.8*height - yf
+    }else if(bounces[c] == 2){
+      if(yf>0.4*height)
+        yf = -(2*0.8*height - yf) #after a bounce
+      else if(yf< -0.4*height)
+        yf = -(-2*0.8*height - yf)
+    }
+    if(length(df.all[[s]]$data$calib[[tt]]$endpoint_y)==0)
+      error[c] = yf #didn't move on first trial so paddle is at 0
+    else{
+      mvt_data = unlist(df.all[[s]]$data$calib[[tt]]$movement_data)
+      endy = mvt_data[length(mvt_data)]
+      error[c] = yf - endy
+    }
+    success[c] = df.all[[s]]$data$calib[[tt]]$success
+    if(length(df.all[[s]]$data$calib[[tt]]$hit_rate)==0){
+      hit_rate[c] = 0 #not ready yet
+    }else{
+      hit_rate[c] = df.all[[s]]$data$calib[[tt]]$hit_rate
+    }
+    if(length(df.all[[s]]$data$calib[[tt]]$rmse)==0){
+      rmse[c] = 0
+    }else{
+      rmse[c] = df.all[[s]]$data$calib[[tt]]$rmse
+    }
+    score[c] = df.all[[s]]$data$calib[[tt]]$score
+    #setting_time[c] = df.all[[s]]$data$calib[[tt]]$setting_time
+    c = c+1
+  }
+  for(tt in 1:numbasic){
+    sub[c] = s
+    trial[c] = tt+20
+    ball_theta[c] = df.all[[s]]$data$basic[[tt]]$ball_theta
+    paddle_size[c] = df.all[[s]]$data$basic[[tt]]$displ_rad #half of paddle height
+    er[c] = df.all[[s]]$data$basic[[tt]]$er
+    if(length(df.all[[s]]$data$basic[[tt]]$bounces)==0){
+      bounces[c] = 1
+      print(c) #smth is wrong
+    } else {
+      bounces[c] = df.all[[s]]$data$basic[[tt]]$bounces
+    }
+    #annoying but we must compute the error on each trial
+    yf = (vx*tan(ball_theta[c] * pi/180))*del_t + df.all[[s]]$data$basic[[tt]]$ball_y
+    if(bounces[c] == 1){
+      if(yf>0.4*height)
+        yf = 0.8*height - yf #after a bounce
+      else if(yf< -0.4*height)
+        yf = -0.8*height - yf
+    }else if(bounces[c] == 2){
+      if(yf>0.4*height)
+        yf = -(2*0.8*height - yf) #after a bounce
+      else if(yf< -0.4*height)
+        yf = -(-2*0.8*height - yf)
+    }
+   if(length(df.all[[s]]$data$basic[[tt]]$endpoint_y)==0)
+      error[c] = yf #didn't move on first trial so paddle is at 0
+    else{
+      mvt_data = unlist(df.all[[s]]$data$basic[[tt]]$movement_data)
+      endy = mvt_data[length(mvt_data)]
+      error[c] = yf - endy
+    }
+    success[c] = df.all[[s]]$data$basic[[tt]]$success
+    hit_rate[c] = df.all[[s]]$data$basic[[tt]]$hit_rate
+    rmse[c] = df.all[[s]]$data$basic[[tt]]$rmse
+    score[c] = df.all[[s]]$data$basic[[tt]]$score
+    #setting_time[c] = df.all[[s]]$data$basic[[tt]]$setting_time
+    c = c+1
+  }
+}
+
+df.all = fromJSON(file = "pong_fast100.json")
+df.all = df.all[c(1:36, 38:47, 49:98)]
+for(s in 1:length(df.all)){
+  vx = 0.6
+  del_t = (df.all[[s]]$config$width-35)/vx
+  height = df.all[[s]]$config$height
+  for(tt in 1:numcalib){
+    sub[c] = s+98
+    trial[c] = tt
+    ball_theta[c] = df.all[[s]]$data$calib[[tt]]$ball_theta
+    paddle_size[c] = df.all[[s]]$data$calib[[tt]]$displ_rad #half of paddle height
+    er[c] = df.all[[s]]$data$calib[[tt]]$er
+    if(length(df.all[[s]]$data$calib[[tt]]$bounces)==0){
+      bounces[c] = 1
+      print(c) #smth is wrong
+    } else {
+      bounces[c] = df.all[[s]]$data$calib[[tt]]$bounces
+    }
+    #annoying but we must compute the error on each trial
+    yf = (vx*tan(ball_theta[c] * pi/180))*del_t + df.all[[s]]$data$calib[[tt]]$ball_y
+    if(bounces[c] == 1){
+      if(yf>0.4*height)
+        yf = 0.8*height - yf #after a bounce
+      else if(yf< -0.4*height)
+        yf = -0.8*height - yf
+    }else if(bounces[c] == 2){
+      if(yf>0.4*height)
+        yf = -(2*0.8*height - yf) #after a bounce
+      else if(yf< -0.4*height)
+        yf = -(-2*0.8*height - yf)
+    }
+    if(length(df.all[[s]]$data$calib[[tt]]$endpoint_y)==0)
+      error[c] = yf #didn't move on first trial so paddle is at 0
+    else{
+      error[c] = df.all[[s]]$data$calib[[tt]]$endpoint_y
+    }
+    success[c] = df.all[[s]]$data$calib[[tt]]$success
+    if(length(df.all[[s]]$data$calib[[tt]]$hit_rate)==0){
+      hit_rate[c] = 0 #not ready yet
+    }else{
+      hit_rate[c] = df.all[[s]]$data$calib[[tt]]$hit_rate
+    }
+    if(length(df.all[[s]]$data$calib[[tt]]$rmse)==0){
+      rmse[c] = 0
+    }else{
+      rmse[c] = df.all[[s]]$data$calib[[tt]]$rmse
+    }
+    score[c] = df.all[[s]]$data$calib[[tt]]$score
+    #setting_time[c] = df.all[[s]]$data$calib[[tt]]$setting_time
+    c = c+1
+  }
+  for(tt in 1:numbasic){
+    sub[c] = s+98
+    trial[c] = tt+20
+    ball_theta[c] = df.all[[s]]$data$basic[[tt]]$ball_theta
+    paddle_size[c] = df.all[[s]]$data$basic[[tt]]$displ_rad #half of paddle height
+    er[c] = df.all[[s]]$data$basic[[tt]]$er
+    if(length(df.all[[s]]$data$basic[[tt]]$bounces)==0){
+      bounces[c] = 1
+      print(c) #smth is wrong
+    } else {
+      bounces[c] = df.all[[s]]$data$basic[[tt]]$bounces
+    }
+    #annoying but we must compute the error on each trial
+    yf = (vx*tan(ball_theta[c] * pi/180))*del_t + df.all[[s]]$data$basic[[tt]]$ball_y
+    if(bounces[c] == 1){
+      if(yf>0.4*height)
+        yf = 0.8*height - yf #after a bounce
+      else if(yf< -0.4*height)
+        yf = -0.8*height - yf
+    }else if(bounces[c] == 2){
+      if(yf>0.4*height)
+        yf = -(2*0.8*height - yf) #after a bounce
+      else if(yf< -0.4*height)
+        yf = -(-2*0.8*height - yf)
+    }
+   if(length(df.all[[s]]$data$basic[[tt]]$endpoint_y)==0)
+      error[c] = yf #didn't move on first trial so paddle is at 0
+    else{
+      error[c] = df.all[[s]]$data$basic[[tt]]$endpoint_y
+    }
+    success[c] = df.all[[s]]$data$basic[[tt]]$success
+    hit_rate[c] = df.all[[s]]$data$basic[[tt]]$hit_rate
+    rmse[c] = df.all[[s]]$data$basic[[tt]]$rmse
+    score[c] = df.all[[s]]$data$basic[[tt]]$score
+    #setting_time[c] = df.all[[s]]$data$basic[[tt]]$setting_time
+    c = c+1
+  }
+}
+
+dat = data.frame(sub, trial, ball_theta, paddle_size, bounces, er, error, success,
+                 hit_rate, rmse, score)
+#write.csv(dat, "")
+```
+
+A brief look at calib
+```{r}
+calib = subset(dat, dat$trial<21)
+calib_s = ddply(calib, .(sub), summarise,
+                hits = mean(success),
+                err = mean(abs(error)))
+
+calib_lc.s = ddply(calib, .(sub, trial), summarise,
+                   err = mean(abs(error)),
+                   hit = mean(success))
+
+calib_lc = ddply(calib_lc.s, .(trial), summarise,
+                 err.m = mean(err),
+                 err.se = sd(err)/sqrt(length(err)),
+                 hit.m = mean(hit),
+                 hit.se = sd(hit)/sqrt(length(hit)))
+
+ggplot(data = calib_lc, aes(x = trial, y = err.m))+ geom_point() +
+  geom_ribbon(aes(ymin = err.m - err.se, ymax = err.m + err.se))
+
+ggplot(data = calib_lc, aes(x = trial, y = hit.m))+ geom_point() +
+  geom_ribbon(aes(ymin = hit.m - hit.se, ymax = hit.m + hit.se))
+```
+
+
+```{r}
+df = subset(dat, dat$trial>20)
+#df = subset(df, df$sub<99)
+df$abs_err = abs(df$error)
+err_lc = ddply(df, .(trial), summarise,
+               err.m = mean(abs_err, na.rm = T),
+               hit.m = mean(hit_rate, na.rm = T),
+               success.m = mean(success, na.rm = T),
+               rmse_t = mean(rmse, na.rm = T),
+               paddle = mean(paddle_size, na.rm = T))
+ggplot(err_lc, aes(x = trial, y = err.m)) + geom_point()
+ggplot(err_lc, aes(x = trial, y = hit.m)) + geom_point()
+ggplot(err_lc, aes(x = trial, y = rmse_t)) + geom_point() + geom_point(aes(y = paddle), color = "#FF00FF")
+ggplot(err_lc, aes(x = trial, y = success.m)) + geom_point()
+```
+
+```{r}
+df$abs_angle = abs(df$ball_theta)
+angle_bins = c(30, 33, 36, 39, 42, 45)
+for (i in 1:(length(angle_bins) - 1)) {
+  df$binned_angles[df$abs_angle < angle_bins[i + 1] & df$abs_angle >= angle_bins[i]] = i
+}
+  
+bin_success = ddply(df, .(binned_angles), summarise,
+                    success.m = mean(success, na.rm = T))
+ggplot(bin_success, aes(x = binned_angles, y = success.m)) + geom_point()
+participants_success = ddply(df, .(binned_angles, sub), summarise,
+                             p_success = mean(success, na.rm = T))
+p_success_stats = ddply(participants_success, .(binned_angles), summarise,
+                        m_p_success = mean(p_success, na.rm = T),
+                        sd_p_success = sd(p_success, na.rm = T)/sqrt(length(p_success)))
+ggplot(p_success_stats, aes(x = binned_angles, y = m_p_success)) + geom_point() + geom_errorbar(aes(ymin = m_p_success - sd_p_success, ymax = m_p_success + sd_p_success), width = 0) + scale_x_discrete(labels = c("30-33", "33-36", "36-39", "39-42", "42-45"))
+```
+Other analyses:
+We should worry about differences between groups (IV = er). 
+Dependent variables:
+Rho = 1/RMSE
+Beta = 1/SD -- how do we compute a rolling 20-trail window SD?
+other questions:
+do we need to baseline correct? subtraction or division
+  baseline correct using the first 10 trials of the main phase of the experiment
+  or for the slow experiment: last 10 of calib phase
+  for the fast exp: the first 10 of the "basic" phase
+  
+"fatigue effects"
+how do we isolate people's "best" performance-- where are they at their best, how do we know it's not a fluke
+are there differences between the first half (trials 20-60) and the second half (60-100)
+--------------------------------------------------------------------------------
+First, let's set up the err_sd column
+comment out this block except for df
+we're actually going to bin every 10 trials and look at only those
+```{r}
+# c=1
+# numsubs = 98
+# full_dat = dat
+# dat = subset(dat, dat$sub < 99)
+# err_sd = vector(length = numsubs*numtrials)
+# 
+# for(s in 1:numsubs){
+#   dat.s = subset(dat, dat$sub == s)
+#   err_hist = vector(length = 20)
+#   for(tt in 1:length(dat.s$trial)){
+#     err_hist[2:20] = err_hist[1:19]
+#     err_hist[1] = dat.s$error[tt]
+#     err_sd[c] = sd(err_hist)
+#     c = c+1
+#   }
+# }
+# dat$err_sd = err_sd
+df = subset(dat, dat$trial> 20)
+df$bin = floor((df$trial-1)/10)
+```
+
+Basic figures:
+```{r}
+sub_lc = ddply(df, .(sub, bin, er), summarise,
+               rmse.m = 1/rho(error),
+               success.m = mean(success))
+
+success_lc = ddply(sub_lc, .(bin, er), summarise,
+                   success = mean(success.m),
+                   success.se = sd(success.m)/sqrt(length(success.m)))
+
+theme_set(theme_cowplot())
+group_colors = c("#044A05", "#42B395", "#FC824A", "#B00149")
+
+ggplot(data = success_lc, aes(x = bin, y = success, group = er, color = er, fill = er)) + geom_point() + geom_ribbon(color = NA, alpha = 0.5, aes(ymin = success - success.se, ymax = success + success.se)) + 
+  geom_hline(yintercept = c(0.85, 0.70, 0.50, 0.35), linetype = "dashed", size = 1.5)+
+  scale_color_gradient(low = "#00ffff", high = "#ff00ff")+
+  scale_fill_gradient(low = "#00ffff", high = "#ff00ff")
+
+ggsave("success_rates.svg")
+
+```
+
+
+Now, we need to at least examine a learning curve for each group on these key metrics.
+```{r}
+##before I forget, lets save every participants "true ER" and place it in the df
+#after trial 30 because this is the point at which the success rate stabilizes
+sub_er = tapply(df$success[df$trial>30], df$sub[df$trial>30], mean)
+for(s in 1:numsubs){
+  df$true_er[df$sub == s] = 1-sub_er[s]
+}
+
+#def rmse function; inverse rmse = rho (beta in paper)
+rho = function(arr){
+  val = 0
+  for(i in 1:length(arr)){
+    if(!is.na(arr[i])){
+      val = val + arr[i]^2
+    }
+  }
+  val = sqrt(val/length(arr))
+  return(1/val)
+}
+
+sub_lc = ddply(df, .(sub, bin, er), summarise,
+               rho.m = rho(error), #inverse rmse; rho is used in the paper as "beta"
+               beta.m = 1/sd(error, na.rm = T)) #alternative precision metric 1/sigma
+group_lc = ddply(sub_lc, .(bin, er), summarise,
+                 rho = mean(rho.m, na.rm = T),
+                 rho.se = sd(rho.m, na.rm = T)/sqrt(numsubs/4),
+                 beta = mean(beta.m, na.rm = T),
+                 beta.se = sd(beta.m, na.rm = T)/sqrt(numsubs/4))
+sub_avgs = ddply(sub_lc, .(sub, er), summarise,
+                 rho = mean(rho.m, na.rm = T),
+                 beta = mean(beta.m, na.rm = T))
+group_avgs = ddply(sub_avgs, .(er), summarise,
+                   rho.m = mean(rho),
+                   rho.se = sd(rho)/sqrt(numsubs/4),
+                   beta.m = mean(beta),
+                   beta.se = sd(beta)/sqrt(numsubs/4))
+
+ggplot(data = group_lc, aes(x = bin, y = rho, group = er, color = factor(er), fill = factor(er))) + geom_point() + geom_ribbon(color = NA, alpha = 0.5, aes(ymin = rho - rho.se, ymax = rho + rho.se)) + 
+  scale_fill_manual(values = group_colors)+
+  scale_color_manual(values = group_colors)
+ggplot(data = group_lc, aes(x = bin, y = beta, group = er, color = factor(er), fill = factor(er))) + geom_point() + geom_ribbon(color = NA, alpha = 0.5, aes(ymin = beta - beta.se, ymax = beta + beta.se)) + 
+  scale_fill_manual(values = group_colors)+
+  scale_color_manual(values = group_colors)
+#looking coarsely at average precision across the whole task. This will probably not look good
+ggplot(data = group_avgs, aes(x = factor(er), y = rho.m, color = factor(er),  fill = factor(er))) + 
+  geom_bar(stat = "identity", width = 0.5, alpha = 0.5) + 
+  geom_errorbar(aes(ymin = rho.m-rho.se, ymax = rho.m+rho.se), width = 0, size = 2)+
+  geom_point(data = sub_avgs, aes(x = factor(er), y=rho, color = factor(er)))+
+  scale_fill_manual(values = group_colors)+
+  scale_color_manual(values = group_colors)
+#sig diff between 0.5 and 0.15! p=0.009
+ggplot(data = group_avgs, aes(x = factor(er), y = beta.m, color = factor(er),  fill = factor(er))) + 
+  geom_bar(stat = "identity", width = 0.5, alpha = 0.5) + 
+  geom_errorbar(aes(ymin = beta.m-beta.se, ymax = beta.m+beta.se), width = 0, size = 2)+
+  geom_point(data = sub_avgs, aes(x = factor(er), y=beta, color = factor(er)))+
+  scale_fill_manual(values = group_colors)+
+  scale_color_manual(values = group_colors)
+#sig diff between 0.5 and 0.15; marginal between 0.3 and 0.15
+```
+We now have the problem of baseline correcting. This is not trivial. We could do subtractive baseline correction, which would tell us, in absolute terms, how much a person improved at the task. We could also do a divisive baseline correction telling us, in relative terms, the PERCENT improvement someone has. This may seem like a great individual metric of learning but working in absolute terms allows us to have everyone's improvements on the same scale. If someone starts off really bad it is reasonable to expect them to "double" their precision, but this would be nearly impossible for someone who starts of rather well. If in the end both of them improve by the same amount (in absolute terms) they should be considered to have learned the same amount (say, a 50 pixel reduction in errors). I chose to use a subtractive baseline correction method.
+The divisive method is just a lot noisier.
+```{r}
+#define an outlier removal function
+# rmoutliers = function(arr){
+#   x = mean(arr, na.rm = T)
+#   y = sd(arr, na.rm = T)
+#   out = arr
+#   out[arr>x+3*y] = NA
+#   out[arr<x-3*y] = NA
+#   return(out)
+# }
+rmoutliers = function(arr){
+  x = median(arr, na.rm = T)
+  smry = summary(arr)
+  y = smry[5]-smry[2]
+  out = arr
+  out[arr>x+1.75*y] = NA
+  out[arr<x-1.75*y] = NA
+  return(out)
+}
+
+#baseline levels of performance
+df.base = subset(dat, dat$trial>20 & dat$trial<=30)
+base.rho = tapply(df.base$error, df.base$sub, rho)
+base.beta = 1/tapply(df.base$error, df.base$sub, sd)
+for(s in 1:numsubs){
+  sub_lc$rho.c[sub_lc$sub == s] = (sub_lc$rho.m[sub_lc$sub == s] - base.rho[s])
+  sub_lc$beta.c[sub_lc$sub == s] = (sub_lc$beta.m[sub_lc$sub == s] - base.beta[s])
+}
+late.df = subset(sub_lc, sub_lc$bin>2)
+
+group_lc = ddply(sub_lc, .(bin, er), summarise,
+                 rho = mean(rho.c, na.rm = T),
+                 rho.se = sd(rho.c, na.rm = T)/sqrt(numsubs/4),
+                 beta = mean(beta.c, na.rm = T),
+                 beta.se = sd(beta.c, na.rm = T)/sqrt(numsubs/4))
+all_lc = ddply(sub_lc, .(bin), summarise, 
+               rho = mean(rho.c, na.rm = T),
+               rho.se = sd(rho.c, na.rm = T)/sqrt(numsubs),
+               beta = mean(beta.c, na.rm = T),
+               beta.se = sd(beta.c, na.rm = T)/sqrt(numsubs))
+
+sub_avgs = ddply(late.df, .(sub, er), summarise,
+                 rho = mean(rho.c, na.rm = T),
+                 beta = mean(beta.c, na.rm = T))
+sub_avgs$true.er = 1-sub_er
+sub_avgs$group = as.numeric(as.factor(sub_avgs$er))
+sub_avgs = ddply(sub_avgs, .(er), mutate, rho = rmoutliers(rho), beta = rmoutliers(beta))
+group_avgs = ddply(sub_avgs, .(er), summarise,
+                   rho.m = mean(rho, na.rm = T),
+                   rho.se = sd(rho, na.rm = T)/sqrt(numsubs/4),
+                   beta.m = mean(beta, na.rm = T),
+                   beta.se = sd(beta, na.rm = T)/sqrt(numsubs/4),
+                   true_er = mean(true.er))
+group_avgs$group = as.numeric(as.factor(group_avgs$er))
+#lc collapsed across groups
+ggplot(data = all_lc, aes(x = bin, y=rho))+ geom_point() + 
+  geom_ribbon(color = NA, alpha = 0.5, aes(ymin = rho -rho.se, ymax = rho+rho.se))
+ggsave("fullLC_rho.svg")
+
+
+ggplot(data = group_lc, aes(x = bin, y = rho, group = er, color = er, fill = er)) + geom_point() + geom_ribbon(color = NA, alpha = 0.5, aes(ymin = rho - rho.se, ymax = rho + rho.se)) + 
+  scale_color_gradient(low = "#00ffff", high = "#ff00ff")+
+  scale_fill_gradient(low = "#00ffff", high = "#ff00ff")
+
+ggsave("groupLCs_rho.svg")
+
+ggplot(data = group_lc, aes(x = bin, y = beta, group = er, color = factor(er), fill = factor(er))) + geom_point() + geom_ribbon(color = NA, alpha = 0.5, aes(ymin = beta - beta.se, ymax = beta + beta.se)) + 
+  scale_fill_manual(values = group_colors)+
+  scale_color_manual(values = group_colors)
+#looking coarsely at average precision across the whole task. This will probably not look good
+ggplot(data = group_avgs, aes(x = group, y = rho.m, color = er,  fill = er)) + 
+  geom_bar(stat = "identity", width = 0.5, alpha = 0.5) + 
+  geom_errorbar(aes(ymin = rho.m-rho.se, ymax = rho.m+rho.se), width = 0, size = 2)+
+  geom_point(data = sub_avgs, aes(x = group , y=rho, color = er))+
+  scale_color_gradient(low = "#00ffff", high = "#ff00ff")+
+  scale_fill_gradient(low = "#00ffff", high = "#ff00ff")
+
+ggsave("groupLI_rho.svg")
+
+#sig diff between 0.5 and 0.15! p=0.004; also against 0.65 (if subtractive and not divisive)
+ggplot(data = group_avgs, aes(x = factor(er), y = beta.m, color = factor(er),  fill = factor(er))) + 
+  geom_bar(stat = "identity", width = 0.5, alpha = 0.5) + 
+  geom_errorbar(aes(ymin = beta.m-beta.se, ymax = beta.m+beta.se), width = 0, size = 2)+
+  geom_point(data = sub_avgs, aes(x = factor(er), y=beta, color = factor(er)))+
+  scale_fill_manual(values = group_colors)+
+  scale_color_manual(values = group_colors)
+#sig diff between 0.5 and 0.15
+
+t.test(sub_avgs$rho[sub_avgs$er == 0.3], sub_avgs$rho[sub_avgs$er == 0.15], var.equal = T)
+cohen.d(sub_avgs$rho[sub_avgs$er == 0.3], sub_avgs$rho[sub_avgs$er == 0.15], na.rm = T)
+```
+```{r}
+#sub_avgs$true.er2 = sub_avgs$true.er^2
+#lm.x2 = lm(data = sub_avgs, rho ~ true.er + true.er2)
+#lm.x = lm(data = sub_avgs, rho ~ true.er)
+
+#erVals = 1:57*0.01 + 0.01 #range from 0.05-0.61; full range of sub ERs
+#predictedRho = predict(lm.x2, list(true.er = erVals, true.er2 = erVals^2))
+
+best_fit_pred = function(params, bin_avgs, pred){
+  a = params[1]
+  b = params[2]
+  xs = bin_avgs$true.er
+  ys = bin_avgs$rho
+  pred_ys = a*erLR(xs)+b
+  residuals = (ys-pred_ys)^2
+  sse = sum(residuals, na.rm = T)
+  return(sse)
+}
+
+er_splits = quantile(sub_avgs$true.er, c(0,1/6,1/3,1/2,2/3,5/6,1))
+count = c()
+for(s in 2:length(er_splits)){
+  sub_avgs$er_bin[sub_avgs$true.er <= er_splits[s] & sub_avgs$true.er > er_splits[s-1]] = s-1
+  count[s] = length(sub_avgs$er_bin[sub_avgs$true.er <= er_splits[s] & sub_avgs$true.er > er_splits[s-1]])
+}
+
+bin_avgs = ddply(sub_avgs, .(er_bin), summarise, 
+                 er.m = mean(true.er, na.rm = T),
+                 er.se = sd(true.er, na.rm = T)/sqrt(length(rho)),
+                 rho.m = mean(rho, na.rm=  T),
+                 rho.se = sd(rho, na.rm=  T)/sqrt(length(rho)),
+                 beta.m = mean(beta, na.rm = T),
+                 beta.se = sd(beta, na.rm = T)/sqrt(length(beta)),
+                 n = length(rho))
+bin_avgs = subset(bin_avgs, !is.na(bin_avgs$er_bin))
+
+theory = data.frame(er = ers[ers>0.1 & ers<0.65], pred = learning[ers>0.1 &ers<0.65])
+
+res = optim(c(0.02, -0.006), best_fit_pred, bin_avgs = sub_avgs, method = "L-BFGS-B",
+                   lower = c(0,-0.2), upper = c(0.1,0.1))
+a = res$par[1]
+b = res$par[2]
+
+theory$pred = a*theory$pred + b
+
+ggplot(data = bin_avgs, aes(x = er.m, y=rho.m, color = er.m, fill = er.m)) + geom_point(size = 3) + 
+  geom_errorbar(width = 0, size = 2, aes(ymin = rho.m - rho.se, ymax = rho.m + rho.se)) +
+  geom_errorbar(width = 0, aes(xmin = er.m - er.se, xmax = er.m + er.se))+
+  geom_line(data= theory, size = 2, aes(x = er, y = pred, color = er, fill = er))+
+  scale_color_gradient(low = "#00ffff", high = "#ff00ff")+
+  scale_fill_gradient(low = "#00ffff", high = "#ff00ff")
+
+ggsave("binnedLIs_rho.svg")
+#lines(ers[ers>0 & ers<0.7], 0.015*learning[ers>0 & ers<0.7]-0.005)
+
+# a way of validating the model is to use the theoretical prediction to come up with 
+# a predicted rho and correlate the predicted rho (arbitrarily scaled) with true rhos
+
+sub_avgs$predictedRho = erLR(sub_avgs$true.er)
+
+cor.test(sub_avgs$rho, sub_avgs$predictedRho, method="spearman")
+
+
+clean_sub_avgs = subset(sub_avgs, sub_avgs$predictedRho>0.2)
+#plot this with gradient on true.er
+ggplot(data = clean_sub_avgs, aes(x = rho, y = predictedRho, color = true.er)) + geom_point(size = 2)+
+  geom_smooth(method = 'lm')+
+  scale_color_gradient(low = "#00ffff", high = "#ff00ff")+
+  scale_fill_gradient(low = "#00ffff", high = "#ff00ff")
+
+ggsave("corLRs.svg")
+
+```
+Theoretical predictions!
+```{r}
+erf = function(x){
+  out = vector(length = length(x))
+  min_x = -10
+  for(s in 1:length(x)){
+    #divide the space from -10 to x into 100000 even increments
+    inc = (x[s]-min_x)/100000
+    range = (1:100000)*inc + min_x
+    out[s] = sum(pNorm(range, 0, 1))*inc
+  }
+  return(out)
+} 
+
+pNorm = function(x, m, s){
+  a = 1/(sqrt(2*pi)*s)
+  exp1 = exp(-0.5*((x-m)/s)^2)
+  return(a*exp1)
+}
+
+
+#xs = 1:30*0.1
+
+deltas = 1:30000*0.0001
+ers = 2*erf(-deltas)
+learning = 2* deltas* pNorm(-deltas, 0, 1) #this is the derivative dER/dB for a given B=1
+
+ers2 = 2*erf(-2*deltas)
+learning2 = 2*2*deltas*pNorm(-2*deltas, 0, 1)
+
+svg("deltaLR2.svg")
+plot(deltas, learning, type="l")
+lines(deltas, learning2)
+dev.off()
+svg("erLR.svg")
+plot(ers, learning, type="l")
+lines(ers2, learning2)
+dev.off()
+svg("deltasER2.svg")
+plot(deltas, ers, type="l")
+lines(deltas, ers2)
+dev.off()
+svg("gaussian2.svg")
+plot(1:60000*0.0001-3, pNorm(1:60000*0.0001-3, 0, 0.5), type='l')
+lines(1:60000*0.0001-3, pNorm(1:60000*0.0001-3, 0, 1))
+dev.off()
+
+erLR = approxfun(ers, learning) #stores a custom function to translate ER to learning rates
+
+```
+
+
